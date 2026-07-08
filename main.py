@@ -10,14 +10,14 @@
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 import yaml
 import os
 
 # -----------------------------
 # Load .env into environment
 # -----------------------------
-load_dotenv()
+env_file = dotenv_values(".env")
 
 app = FastAPI()
 
@@ -130,28 +130,26 @@ def load_os_env():
 @app.get("/effective-config")
 def effective_config(set: list[str] = Query(default=[])):
 
-    config = defaults.copy()
+    # Load each configuration layer
+    yaml_config = load_yaml()
+    dotenv_config = load_dotenv_config()
+    os_env_config = load_os_env()
 
-    # YAML
-    config.update(load_yaml())
-
-    # .env
-    config.update(load_dotenv_config())
-
-    # OS env
-    config.update(load_os_env())
-
-    # CLI overrides
+    # Parse CLI overrides
+    cli_overrides = {}
     for item in set:
+        if "=" in item:
+            key, value = item.split("=", 1)
+            cli_overrides[key] = convert_type(key, value)
 
-        if "=" not in item:
-            continue
+    # Merge in the required precedence order
+    config = defaults.copy()
+    config.update(yaml_config)
+    config.update(dotenv_config)
+    config.update(os_env_config)
+    config.update(cli_overrides)
 
-        key, value = item.split("=", 1)
-
-        config[key] = convert_type(key, value)
-
-    # Mask secret
+    # Mask the API key
     config["api_key"] = "****"
 
     return config
